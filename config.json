@@ -1,0 +1,24 @@
+{
+    "tenant" : "18ad3eec-bc5b-4390-9f15-as1d4as21",
+    "subscription_id" : "4fc0d55a-5909-4ee6-b2f3-1asd55as2",
+    "credentials" : {
+        "resource-group" : "apps_kubernetes",
+        "name" : "ProductionAKSCluster",
+        "overwrite-existing" : true
+    },
+    "namespace" : {
+        "echo": false,
+        "select" : "app-main"
+    },
+    "deployments" : {
+        "echo": false,
+        "select" : "app-php"
+    },
+    "pods" : {
+        "echo": false,
+        "select" : "app-7697c45779-7h2v4"
+    },
+    "backup" : {
+        "folder" : "C:/...../Backups/"
+    }
+}
