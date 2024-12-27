@@ -1,63 +1,52 @@
 # **Manual de Conexión a Azure y Kubernetes**
 
-Este manual proporciona instrucciones detalladas para iniciar sesión en Azure, configurar la suscripción, interactuar con un clúster de Kubernetes, y navegar por los Pods y Deployments en el entorno.
+Este manual ofrece instrucciones detalladas para conectar con Azure, configurar una suscripción, interactuar con un clúster de Kubernetes y gestionar los Pods y Deployments dentro del entorno.
 
 ---
 
 ## **1. Iniciar sesión en Azure**
 
-Ejecute el siguiente comando para iniciar sesión en Azure:
+Para iniciar sesión en Azure, ejecute el siguiente comando:
 
 ```bash
 # En la Web
 az login
 
 # En el Local
-az login --tenant 18ad3eec-bc5b-4390-9f15-d679a3c24e9e
+az login --tenant <ID_TENANT>
 ```
 
-Asegúrese de usar las credenciales asociadas a la cuenta `@participacionbogota.gov.co`.
+Asegúrese de utilizar las credenciales adecuadas para su cuenta de Azure.
 
 ---
 
 ## **2. Configurar la suscripción**
 
-Para trabajar con un Tenant específico, seleccione la suscripción correspondiente utilizando el siguiente comando:
+Para trabajar con una suscripción específica, utilice el siguiente comando:
 
 ```bash
-az account set --subscription 4fc0d55a-5909-4ee6-b2f3-e1dee8fa95eb
+az account set --subscription <ID_SUSCRIPCION>
 ```
 
 ---
 
 ## **3. Obtener las credenciales del clúster Kubernetes**
 
-Conéctese al clúster Kubernetes configurando las credenciales para el grupo de recursos `idpac_kubernetes` y el clúster `ProductionAKSCluster`:
+Conéctese al clúster Kubernetes configurando las credenciales para el grupo de recursos y el nombre del clúster deseado:
 
 ```bash
-az aks get-credentials --resource-group idpac_kubernetes --name ProductionAKSCluster --overwrite-existing
+az aks get-credentials --resource-group <GRUPO_RECURSOS> --name <CLUSTER_NAME> --overwrite-existing
 ```
 
 ---
 
 ## **4. Listar los Pods disponibles**
 
-Para ver todos los Pods disponibles en el clúster, use el siguiente comando:
+Para ver todos los Pods disponibles en el clúster, ejecute el siguiente comando:
 
 ```bash
 kubectl get pods --all-namespaces -o wide
 ```
-
-### **PODS relevantes para el área de comunicaciones**
-
-| **Espacio de nombres** | **Nombre del Pod**              | **IP del Pod** | **Nodo asignado**                  |
-|-------------------------|---------------------------------|----------------|-------------------------------------|
-| idpac-develop           | cms-nginx-7db6989cc4-c7tlg     | 10.244.0.27    | aks-d4sv5-37625573-vmss00000o      |
-| idpac-develop           | cms-nginx-7db6989cc4-ff5k4     | 10.244.2.31    | aks-d4sv5-37625573-vmss00000c      |
-| idpac-develop           | cms-nginx-7db6989cc4-gg925     | 10.244.2.40    | aks-d4sv5-37625573-vmss00000c      |
-| idpac-develop           | cms-php-d9c6ddd48-4jsrc        | 10.244.2.15    | aks-d4sv5-37625573-vmss00000c      |
-| idpac-develop           | cms-php-d9c6ddd48-mvsl2        | 10.244.3.72    | aks-d4sv5-37625573-vmss00000e      |
-| idpac-develop           | cms-php-d9c6ddd48-tlwkm        | 10.244.2.32    | aks-d4sv5-37625573-vmss00000c      |
 
 ---
 
@@ -72,7 +61,7 @@ kubectl get deployments --all-namespaces
 Para filtrar por espacio de nombres, use el siguiente comando:
 
 ```bash
-kubectl get deployments -n idpac-develop
+kubectl get deployments -n <NAMESPACE>
 ```
 
 ---
@@ -89,10 +78,10 @@ kubectl get namespaces
 
 ## **7. Acceder a un Pod específico**
 
-Para acceder a un Pod y trabajar en su entorno de CLI, ejecute el siguiente comando, reemplazando `cms-php-d9c6ddd48-4jsrc` con el nombre del Pod deseado:
+Para acceder a un Pod y trabajar en su entorno de CLI, ejecute el siguiente comando, reemplazando `<POD_NAME>` con el nombre del Pod deseado:
 
 ```bash
-kubectl exec -it cms-php-d9c6ddd48-4jsrc -n idpac-develop -- /bin/bash
+kubectl exec -it <POD_NAME> -n <NAMESPACE> -- /bin/bash
 ```
 
 ---
@@ -112,7 +101,7 @@ Una vez dentro del Pod, puede usar los siguientes comandos para navegar y gestio
   ```
 - Cambiar a otro directorio:
   ```bash
-  cd <nombre_del_directorio>
+  cd <directorio>
   ```
 - Volver al directorio anterior:
   ```bash
@@ -130,13 +119,13 @@ Una vez dentro del Pod, puede usar los siguientes comandos para navegar y gestio
   ```
 - Eliminar un archivo:
   ```bash
-  rm <nombre_del_archivo>
+  rm <nombre_archivo>
   ```
 
 ### **Edición de archivos**
-- Abrir un archivo con el editor de texto predeterminado:
+- Abrir un archivo con el editor de texto:
   ```bash
-  nano <nombre_del_archivo>
+  nano <nombre_archivo>
   ```
 
 ### **Gestión de procesos**
@@ -148,7 +137,7 @@ Una vez dentro del Pod, puede usar los siguientes comandos para navegar y gestio
 ### **Otras utilidades**
 - Ver el contenido de un archivo:
   ```bash
-  cat <nombre_del_archivo>
+  cat <nombre_archivo>
   ```
 - Limpiar la pantalla de la terminal:
   ```bash
@@ -156,7 +145,7 @@ Una vez dentro del Pod, puede usar los siguientes comandos para navegar y gestio
   ```
 - Crear un directorio:
   ```bash
-  mkdir <nombre_del_directorio>
+  mkdir <nombre_directorio>
   ```
 - Comprobar espacio en disco:
   ```bash
@@ -167,38 +156,28 @@ Una vez dentro del Pod, puede usar los siguientes comandos para navegar y gestio
 
 ## **Copiar Contenido Al Local**
 
-Para poder copiar el contenido del POD a una ruta del PC local del desarrollador, es escencial que la sesion se inicie desde un PowerShell de manera local teniendo instalo previamente el azure-cli.
+Para copiar el contenido de un Pod a una ruta del equipo local, inicie sesión desde PowerShell, asegurándose de que el Azure CLI esté instalado previamente.
 
-Ruta a copiar = /var/www/app
-Pod = cms-php-d9c6ddd48-4jsrc
-Namespace = idpac-develop
+Ruta a copiar = `/var/www/app`
+Pod = `<POD_NAME>`
+Namespace = `<NAMESPACE>`
 
 ```bash
-# Primero Iremos a la ruta a donde queremos copiar el contenido.
-cd C:\Users\runate\eclipse\Documents\AzureData
+# Primero navegue hasta la ruta local donde desea copiar el contenido.
+cd <ruta_local>
 
-# Luego estando allí ejecutamos el comando de copia.
-# kubectl cp idpac-develop/cms-nginx-7db6989cc4-gg925:/var/www/app ./cms-nginx-7db6989cc4-gg925/
-C:\Users\runate\eclipse\Documents\AzureData> kubectl cp idpac-develop/cms-php-d9c6ddd48-4jsrc:/var/www/app ./cms-php-d9c6ddd48-4jsrc/
-
-# Este proceso tomará ciertos minutos mientros se ejecuta, solo es cuestion de esperar.
+# Luego ejecute el comando de copia.
+kubectl cp <NAMESPACE>/<POD_NAME>:/var/www/app ./<POD_NAME>/
 ```
 
 ---
 
-## Copiar Archivos Local Al POD:
+## **Copiar Archivos Local Al POD**
 
-Copiar un archivo del local al POD.
+Para copiar un archivo del equipo local al Pod, ejecute el siguiente comando:
 
 ```bash
-kubectl cp header_buscar_boton.png idpac-main/cms-php-7697c45779-7h2v4:/var/www/app/web/sites/idpac/files/imagenes/header_buscar_boton.png
-
-kubectl cp . idpac-main/cms-php-7697c45779-7h2v4:/var/www/app/web/api/
+kubectl cp <archivo_local> <NAMESPACE>/<POD_NAME>:/var/www/app/<ruta_destino>
 ```
 
 ---
-
-## Información del Autor
-
-- **Fecha**: 31 de Octubre de 2024
-- **Ingeniero**: Raúl Mauricio Uñate Castro
