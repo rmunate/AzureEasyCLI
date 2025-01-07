@@ -103,7 +103,7 @@ The script relies on a `config.json` file located in the root directory of the p
 To create a backup of the source code from the selected pod:
 
 ```bash
-python main.py --backup
+python -B .\azure-cli.py --backup
 ```
 
 This will execute the backup to the folder specified in the `config.json` file.
@@ -113,7 +113,7 @@ This will execute the backup to the folder specified in the `config.json` file.
 To start an interactive console session in the selected pod:
 
 ```bash
-python main.py --console
+python -B .\azure-cli.py --console
 ```
 
 This will open a Bash shell inside the selected pod, allowing you to interact with it directly.
