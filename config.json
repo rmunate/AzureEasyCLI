@@ -1,24 +1,25 @@
 {
-    "tenant" : "18ad3eec-bc5b-4390-9f15-as1d4as21",
-    "subscription_id" : "4fc0d55a-5909-4ee6-b2f3-1asd55as2",
+    "tenant" : "your-tenant-id",
+    "subscription_id" : "your-subscription-id",
     "credentials" : {
-        "resource-group" : "apps_kubernetes",
-        "name" : "ProductionAKSCluster",
+        "resource-group" : "your-resource-group-name",
+        "name" : "your-cluster-name",
         "overwrite-existing" : true
     },
     "namespace" : {
         "echo": false,
-        "select" : "app-main"
+        "select" : "your-namespace-name"
     },
     "deployments" : {
         "echo": false,
-        "select" : "app-php"
+        "select" : "your-deployment-name"
     },
     "pods" : {
         "echo": false,
-        "select" : "app-7697c45779-7h2v4"
+        "select" : "your-pod-name"
     },
     "backup" : {
-        "folder" : "C:/...../Backups/"
+        "folder" : "path/to/backup/folder",
+        "origin" : "/var/www/app"
     }
 }

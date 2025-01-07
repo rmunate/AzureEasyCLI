@@ -1,395 +1,582 @@
+# ---------------------------------------------------------------------------- #
+# Author: Raul Mauricio Uñate Castro                                           #
+# GitHub: https://github.com/rmunate                                           #
+# Date: January 7, 2025                                                        #
+# ---------------------------------------------------------------------------- #
+
 import re
 import os
 import json
 import shutil
 import subprocess
+from pathlib import Path
 from lib.output import Console
-from lib.helpers import clear_folder, sanitize_folder_name
+from lib.helpers import sanitize_folder_name
 
 class Azure:
-    """
-    Clase para gestionar la conexión a Azure mediante Azure CLI.
-    """
 
     def __init__(self):
         """
-        Constructor de la clase Azure.
+        Initializes the command interpreter service for connecting to Azure CLI.
+
+        Prerequisites:
+        - Azure CLI: Ensure Azure CLI is installed. Follow the guide here:
+        https://learn.microsoft.com/en-us/cli/azure/install-azure-cli
+        - kubectl: Ensure kubectl is installed. Follow the guide here:
+        https://kubernetes.io/docs/tasks/tools/
+
+        The initialization process will:
+        1. Validate that the required tools are installed and accessible.
+        2. Display the detected versions of Azure CLI and kubectl.
+        3. Prepare the object for managing Azure CLI connections and Kubernetes namespaces.
         """
 
-        # Información de la conexión actual
+        #read Art:
+        current_path = os.path.dirname(__file__)
+        art_path = os.path.join(current_path, '..', 'lib', 'art.ascii')
+
+        with(open(art_path, 'r')) as art:
+            print(art.read())
+
+        # Validate required tools
+        tools = self.check_required_tools()
+
+        # Display tool versions
+        Console.info(
+            message=f"Tools detected: Azure CLI {tools['Azure CLI']} | kubectl {tools['kubectl']}",
+            timestamp=True
+        )
+
+        # Initialize connection data and namespaces
         self.data_connection = None
         self.namespaces = []
+        self.deployments = []
+        self.pods = []
+
+    def check_required_tools(self):
+        """
+        Validates that the required dependencies (Azure CLI and kubectl) are installed and accessible.
+        Raises an error with guidance links if any dependency is missing.
+
+        Returns:
+            dict: A dictionary containing the status and version of the tools.
+        """
+        tools_status = {}
+
+        # Check Azure CLI
+        try:
+            command = "az version"
+            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+            az_version = json.loads(result.stdout).get("azure-cli", "Unknown")
+            tools_status["Azure CLI"] = f"Installed (Version: {az_version})"
+        except subprocess.CalledProcessError:
+            raise RuntimeError(
+                "Azure CLI is not installed. Please install it from: "
+                "https://learn.microsoft.com/en-us/cli/azure/install-azure-cli"
+            )
+        except json.JSONDecodeError:
+            raise RuntimeError("Failed to parse Azure CLI version information.")
+
+        # Check kubectl
+        try:
+            command = "kubectl version --client --output=json"
+            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+            kubectl_version = json.loads(result.stdout)["clientVersion"]["gitVersion"]
+            tools_status["kubectl"] = f"Installed (Version: {kubectl_version})"
+        except subprocess.CalledProcessError:
+            raise RuntimeError(
+                "kubectl is not installed. Please install it from: "
+                "https://kubernetes.io/docs/tasks/tools/"
+            )
+        except json.JSONDecodeError:
+            raise RuntimeError("Failed to parse kubectl version information.")
+
+        return tools_status
 
     def login(self, tenant_id=None):
         """
-        Inicia sesión en Azure.
+        Logs into Azure.
 
         Args:
-            tenant_id (str, optional): ID del tenant para iniciar sesión. Si no se proporciona, inicia sesión de forma genérica.
+            tenant_id (str, optional): The tenant ID for login. If not provided, performs a generic login.
 
         Raises:
-            ValueError: Si no se puede iniciar sesión correctamente.
-            RuntimeError: Si ocurre un error durante la ejecución del comando.
+            ValueError: If login is unsuccessful or the connection state is not enabled.
+            RuntimeError: If an error occurs while executing the command.
         """
         try:
-            # Construir el comando según la presencia de tenant_id
+            # Build the command based on the presence of tenant_id
             command = f"az login --tenant {tenant_id}" if tenant_id else "az login"
 
-            # Ejecutar el comando
+            # Execute the command
             result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
 
-            # Cargar la respuesta como JSON
+            # Parse the response as JSON
             connect_data = json.loads(result.stdout)[0]
 
-            # Validar el estado de la conexión
+            # Validate the connection state
             if connect_data.get('state') != "Enabled":
-                raise ValueError("Imposible iniciar sesión. Estado de conexión no habilitado.")
+                raise ValueError("Login failed. Connection state is not enabled.")
 
-            # Mensaje de confirmación
+            # Confirmation message
             tenant_message = f", Tenant: {connect_data.get('name')}" if tenant_id else ""
-            Console.info(message=f"Sesión iniciada correctamente{tenant_message}.", timestamp=True)
+            Console.info(message=f"Successfully logged in{tenant_message}.", timestamp=True)
 
-            # Almacenar la conexión
+            # Store the connection data
             self.data_connection = connect_data
 
         except subprocess.CalledProcessError as e:
-            raise ValueError(f"Error al ejecutar el comando: {e.stderr}")
+            # Log and re-raise for better error context
+            error_message = f"Command execution failed: {e.stderr.strip()}"
+            raise RuntimeError(error_message) from e
 
         except json.JSONDecodeError as e:
-            raise ValueError("La respuesta del comando no es un JSON válido.")
+            error_message = "Invalid JSON response from Azure CLI."
+            raise ValueError(error_message) from e
 
     def get_connection_data(self):
         """
-        Retorna la información de la conexión actual.
+        Retrieve the current connection data.
+
+        This method returns the stored connection details if a successful login has occurred.
+        It raises an exception if no active session is found.
 
         Returns:
-            dict: Datos de la conexión almacenada.
+            dict: The stored connection data, including information about the authenticated user and tenant.
 
         Raises:
-            ValueError: Si no se ha iniciado sesión.
+            ValueError: If no active session is available (i.e., login has not been performed).
         """
         if not self.data_connection:
-            raise ValueError("No se ha iniciado sesión.", timestamp=True)
+            raise ValueError("No active session found. Please log in first.")
 
         return self.data_connection
 
     def setSubscription(self, subscription_id):
-        """Ejecutar el seteo de la suscripcion correspondiente"""
+        """
+        Set the Azure subscription for the current context.
+
+        This method updates the Azure CLI context to use the specified subscription ID.
+        It raises an exception if the operation fails.
+
+        Args:
+            subscription_id (str): The subscription ID to set.
+
+        Raises:
+            ValueError: If the subscription could not be set due to an error.
+        """
         try:
-            subprocess.run(f"az account set --subscription {subscription_id}", shell=True, check=True, capture_output=True, text=True)
-            Console.info(message=f"Subscripción [{subscription_id}] seteada en el contexto exitosamente.", timestamp=True)
+            # Execute the command to set the subscription
+            command = f"az account set --subscription {subscription_id}"
+            subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+
+            # Log success message
+            Console.info(
+                message=f"Subscription [{subscription_id}] successfully set in the current context.",
+                timestamp=True
+            )
+        except subprocess.CalledProcessError as e:
+            # Capture command errors and raise with details
+            error_message = f"Failed to set subscription [{subscription_id}]. Error: {e.stderr.strip()}"
+            raise ValueError(error_message) from e
         except Exception as e:
-            raise ValueError(f"Error al setear la subscripción [{subscription_id}]", timestamp=True)
+            # Handle unexpected errors
+            error_message = f"An unexpected error occurred while setting subscription [{subscription_id}]."
+            raise ValueError(error_message) from e
 
-    def listNamespaces(self, echo:bool = True):
-        """Listar los nombres de espacio disponibles."""
+    def listNamespaces(self, echo: bool = True):
+        """
+        List available Kubernetes namespaces.
 
-        # Ejecutar la consulta de los namespaces
-        result = subprocess.run("kubectl get namespaces", shell=True, check=True, capture_output=True, text=True)
+        This method retrieves and displays the namespaces in the current Kubernetes context. 
+        If `echo` is enabled, the namespaces are displayed in the console.
 
-        # Validar si retorno datos de espacios de nombre.
-        if 'NAME' in result.stdout and 'STATUS' in result.stdout and 'AGE' in result.stdout:
+        Args:
+            echo (bool, optional): If True, the namespaces are printed to the console. Defaults to True.
 
-            # Preparar los datos
-            lst = result.stdout.split()[3:]
+        Raises:
+            ValueError: If no namespaces are found or the command fails.
 
-            # Valores para logica de la sepracion de datos.
-            iteration = 0
-            multiple = 3
-            iteration_data = []
-            all_namespace = []
+        Returns:
+            None
+        """
+        try:
+            # Execute the command to retrieve namespaces
+            command = "kubectl get namespaces"
+            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
 
-            # Crear la lista de valores a mostrar traducida al español.
-            for value in lst:
-                iteration += 1
-                if iteration % multiple == 0:
-                    value = value.replace('y', ' Años ').replace('d', ' Dias').replace('h', ' Horas ').replace('m', ' Minutos ')
-                    iteration_data.append(value)
-                    all_namespace.append(iteration_data)
-                    iteration_data = []
-                else:
-                    value = value.replace('Inactive', 'Inactivo').replace('Active', 'Activo')
-                    iteration_data.append(value)
+            # Check if valid data is returned
+            if 'NAME' in result.stdout and 'STATUS' in result.stdout and 'AGE' in result.stdout:
+                # Prepare namespace data
+                raw_data = result.stdout.split()[3:]  # Exclude headers (NAME, STATUS, AGE)
+                all_namespaces = []
+                namespace_data = []
 
-            # Generar la salida en consola.
-            if echo:
-                Console.newLine()
-                Console.textSuccess(
-                    message='Nombres de espacios disponibles.'
-                )
-                Console.table(
-                    headers=['Nombre', 'Estado', 'Edad'],
-                    rows=all_namespace
-                )
-                Console.newLine()
+                # Process data into structured format
+                for index, value in enumerate(raw_data, start=1):
+                    if index % 3 == 0:  # Age column
+                        value = value.replace('y', ' Years ').replace('d', ' Days ').replace('h', ' Hours ').replace('m', ' Minutes ')
+                        namespace_data.append(value.strip())
+                        all_namespaces.append(namespace_data)
+                        namespace_data = []
+                    else:  # Name or Status column
+                        namespace_data.append(value)
 
-            # ALojar los datos de los Namespace.
-            self.namespaces = all_namespace
+                # Display the namespaces in the console if echo is True
+                if echo:
+                    Console.newLine()
+                    Console.textSuccess("Available Kubernetes namespaces:")
+                    Console.table(
+                        headers=["Name", "Status", "Age"],
+                        rows=all_namespaces
+                    )
+                    Console.newLine()
 
-            # Finalizar el Metodo
-            return
+                # Store namespaces data
+                self.namespaces = all_namespaces
+                return
 
-        # Lanzar excepcion de no encontrar namespace disponibles.
-        raise ValueError("No se encontraron espacios de nombre disponibles.")
+            # Error if no namespaces are found
+            Console.fail("No namespaces found in the current Kubernetes context.")
+
+        except subprocess.CalledProcessError as e:
+            error_message = f"Failed to retrieve namespaces. Error: {e.stderr.strip()}"
+            raise RuntimeError(error_message) from e
 
     def selectNamespace(self, namespace:str=None):
-        """Solicitarle al usuario la seleccion de un namespace en caso de no haber uno configurado."""
+        """
+        Prompt the user to select a Kubernetes namespace if none is configured.
 
-        # Generar el listado de los Namespaces.
-        list_namespaces = []
-        for i_namespace in self.namespaces:
-            list_namespaces.append(i_namespace[0])
+        This method allows the user to select a namespace from the available options 
+        or validates a provided namespace against the available list.
 
-        # Si no existe un namespace por defecto solicitarle al usuario cual emplear.
+        Args:
+            namespace (str, optional): The namespace to use. If not provided, 
+                                    the user is prompted to select one.
+
+        Raises:
+            ValueError: If the provided namespace is not in the list of available namespaces.
+
+        Returns:
+            None
+        """
+
+        # Extract the list of namespace names
+        if not self.namespaces:
+            self.listNamespaces(echo=False)
+        available_namespaces = [ns[0] for ns in self.namespaces]
+
+        # Prompt the user if no namespace is provided
         if namespace is None:
-
-            # Solicitar la seleccion.
             namespace = Console.choice(
-                question="¿Que espacio deseas emplear?",
-                choices=list_namespaces
+                question="Which namespace would you like to use?",
+                choices=available_namespaces
             )
 
-        # Garantizar que el namespace este dentro de las opciones disponibles
-        # En especial cuando es suministrado por el usuario
-        if namespace not in list_namespaces:
-            raise ValueError(f"No existe el namespace [{namespace}] dentro de las opciones disponibles.")
+        # Validate the namespace against the available options
+        if namespace not in available_namespaces:
+            error_message = f"The namespace [{namespace}] is not among the available options."
+            raise ValueError(error_message)
 
-        # Alojar el valor del namespace a emplear.
+        # Store the selected namespace
         self.namespace_selected = namespace
 
-        # Mostrar el nombre del nombre de espacio seleccionado
+        # Display confirmation of the selected namespace
         Console.info(
-            message=f"Nombre del espacio seleccionado para uso [{self.namespace_selected}]",
+            message=f"Namespace selected for use: [{self.namespace_selected}]",
             timestamp=True
         )
 
     def listDeployments(self, echo:bool = True):
-        """Este metodop lista los deployments del namespace seleccionado."""
-        result = subprocess.run(f"kubectl get deployments -n {self.namespace_selected}", shell=True, check=True, capture_output=True, text=True)
+        """
+        List deployments in the selected Kubernetes namespace.
 
-        # Validar si retorno datos de espacios de nombre.
-        if 'NAME' in result.stdout and 'READY' in result.stdout and 'AGE' in result.stdout:
+        This method retrieves and displays the deployments in the currently selected namespace.
+        If `echo` is enabled, the deployments are displayed in a formatted table in the console.
 
-            # Preparar los datos
-            lst = result.stdout.split()[5:]
+        Args:
+            echo (bool, optional): If True, the deployments are printed to the console. Defaults to True.
 
-            # Valores para logica de la sepracion de datos.
-            iteration = 0
-            multiple = 5
-            iteration_data = []
-            all_deployments = []
+        Raises:
+            RuntimeError: If no deployments are found or the `kubectl` command fails.
 
-            # Crear la lista de valores a mostrar traducida al español.
-            for value in lst:
-                iteration += 1
-                if iteration % multiple == 0:
-                    value = value.replace('y', ' Años ').replace('d', ' Dias').replace('h', ' Horas ').replace('m', ' Minutos ')
-                    iteration_data.append(value)
-                    all_deployments.append(iteration_data)
-                    iteration_data = []
-                else:
-                    iteration_data.append(value)
+        Returns:
+            None
+        """
+        try:
+            # Execute the command to list deployments in the selected namespace
+            command = f"kubectl get deployments -n {self.namespace_selected}"
+            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
 
-            # Generar la salida en consola.
-            if echo:
-                Console.newLine()
-                Console.textSuccess(
-                    message='Nombres de implementaciones disponibles.'
-                )
-                Console.table(
-                    headers=['Nombre', 'Preparado(s)', 'Actualizado', 'Disponible', 'Edad'],
-                    rows=all_deployments
-                )
-                Console.newLine()
+            # Check if valid deployment data is returned
+            if 'NAME' in result.stdout and 'READY' in result.stdout and 'AGE' in result.stdout:
+                # Prepare deployment data
+                # Skip header row
+                raw_data = result.stdout.splitlines()[1:]
+                all_deployments = []
 
-            # ALojar los datos de los Deployments.
-            self.deployments = all_deployments
+                for line in raw_data:
+                    # Split each line into columns and normalize time units
+                    columns = line.split()
+                    columns[-1] = columns[-1].replace('y', ' Years ').replace('d', ' Days ').replace('h', ' Hours ').replace('m', ' Minutes ')
+                    all_deployments.append(columns)
 
-            # Finalizar el Metodo
-            return
+                # Display the deployments in the console if echo is True
+                if echo:
+                    Console.newLine()
+                    Console.textSuccess(f"Deployments available in namespace [{self.namespace_selected}]:")
+                    Console.table(
+                        headers=['Name', 'Ready', 'Up-to-date', 'Available', 'Age'],
+                        rows=all_deployments
+                    )
+                    Console.newLine()
 
-        # Lanzar el error de no existencia de implementaciones
-        Console.newLine()
-        Console.info(f"No registran implementaciones en [{self.namespace_selected}]")
-        Console.newLine()
+                # Store the deployments data
+                self.deployments = all_deployments
+                return
+
+            # Handle case where no deployments are found
+            Console.fail(f"No deployments found in namespace [{self.namespace_selected}].")
+
+        except subprocess.CalledProcessError as e:
+            error_message = f"Failed to retrieve deployments for namespace [{self.namespace_selected}]. Error: {e.stderr.strip()}"
+            raise RuntimeError(error_message) from e
 
     def selectDeployment(self, deployment:str=None):
-        """Solicitarle al usuario la seleccion de un deployment en caso de no haber uno configurado."""
+        """
+        Prompt the user to select a deployment if none is configured.
 
-        # Generar el listado de los deployments.
-        list_deployment = []
-        for i_value in self.deployments:
-            list_deployment.append(i_value[0])
+        This method allows the user to select a deployment from the available list 
+        or validates a provided deployment against the available options.
 
-        # Si no existe un namespace por defecto solicitarle al usuario cual emplear.
+        Args:
+            deployment (str, optional): The deployment to use. If not provided, 
+                                        the user is prompted to select one.
+
+        Raises:
+            ValueError: If the provided deployment is not in the list of available deployments.
+
+        Returns:
+            None
+        """
+
+        # Generate the list of available deployments
+        if not self.deployments:
+            self.listDeployments(echo=False)
+        available_deployments = [d[0] for d in self.deployments]
+
+        # Prompt the user to select a deployment if none is provided
         if deployment is None:
-
-            # Solicitar la seleccion.
             deployment = Console.choice(
-                question="¿Que implementación deseas emplear?",
-                choices=list_deployment
+                question="Which deployment would you like to use?",
+                choices=available_deployments
             )
 
-        # Garantizar que la implementacion este presente.
-        if deployment not in list_deployment:
-            raise ValueError(f"No existe la implemtación con el nombre [{deployment}] dentro de las opciones disponibles.")
+        # Validate the provided deployment against the available options
+        if deployment not in available_deployments:
+            error_message = f"The deployment [{deployment}] is not among the available options."
+            raise ValueError(error_message)
 
-        # Alojar el valor del namespace a emplear.
+        # Store the selected deployment
         self.deployment_selected = deployment
 
-        # Mostrar el nombre del nombre de espacio seleccionado
+        # Display confirmation of the selected deployment
         Console.info(
-            message=f"Implementación seleccionada para uso [{self.deployment_selected}]",
+            message=f"Deployment selected for use: [{self.deployment_selected}]",
             timestamp=True
         )
 
-    def listPods(self, echo:bool = True):
-        """Este metodop lista los pods del deployments y del namespace seleccionado."""
-        result = subprocess.run(f"kubectl get pods -n {self.namespace_selected}", shell=True, check=True, capture_output=True, text=True)
+    def listPods(self, echo: bool = True):
+        """
+        List the pods in the selected namespace and deployment.
 
-        # Validar si retorno datos de espacios de nombre.
-        if 'NAME' in result.stdout and 'READY' in result.stdout and 'AGE' in result.stdout:
+        This method retrieves and displays the pods running in the selected namespace
+        and deployment. If `echo` is enabled, the pods are printed to the console in a
+        formatted table.
 
-            # Preparar los datos
-            resultado = re.sub(r"\([^)]* ago\)", "", result.stdout)
-            lst = resultado.split()[5:]
+        Args:
+            echo (bool, optional): If True, the pods are printed to the console. Defaults to True.
 
-            # Valores para logica de la sepracion de datos.
-            iteration = 0
-            multiple = 5
-            iteration_data = []
-            all_pods = []
+        Raises:
+            RuntimeError: If no pods are found or the `kubectl` command fails.
 
-            # Crear la lista de valores a mostrar traducida al español.
-            for value in lst:
-                iteration += 1
-                if iteration % multiple == 0:
-                    value = str(value).replace('y', ' Años ').replace('d', ' Dias').replace('h', ' Horas ').replace('m', ' Minutos ')
-                    iteration_data.append(value)
-                    all_pods.append(iteration_data)
-                    iteration_data = []
-                else:
-                    if value in ['Running', 'Stoped']:
-                        value = value.replace('Running', 'En Ejecución').replace('Stoped', 'Detenido')
-                    iteration_data.append(value)
+        Returns:
+            None
+        """
+        try:
+            # Execute the command to get the pods in the selected namespace
+            command = f"kubectl get pods -n {self.namespace_selected}"
+            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
 
-            # Generar la salida en consola.
-            if echo:
-                Console.newLine()
-                Console.textSuccess(
-                    message='Nombres de Pods disponibles.'
-                )
-                Console.table(
-                    headers=['Nombre', 'Preparado(s)', 'Estado', 'Reinicios', 'Edad'],
-                    rows=all_pods
-                )
-                Console.newLine()
+            # Check if valid pod data is returned
+            if 'NAME' in result.stdout and 'READY' in result.stdout and 'AGE' in result.stdout:
+                # Clean the output to remove unwanted timestamps
+                cleaned_output = re.sub(r"\([^)]* ago\)", "", result.stdout)
+                pod_data = cleaned_output.splitlines()[1:]  # Skip header row
 
-            # ALojar los datos de los Deployments.
-            self.pods = all_pods
+                all_pods = []
+                for line in pod_data:
+                    columns = line.split()
+                    # Replace time format and pod status
+                    columns[-1] = columns[-1].replace('y', ' Years ').replace('d', ' Days ').replace('h', ' Hours ').replace('m', ' Minutes ').strip()
+                    all_pods.append(columns)
 
-            # Finalizar el Metodo
-            return
+                # Display the pod information in the console if echo is True
+                if echo:
+                    Console.newLine()
+                    Console.textSuccess(f"Available Pods in namespace [{self.namespace_selected}] for deployment [{self.deployment_selected}]:")
+                    Console.table(
+                        headers=['Name', 'Ready', 'Status', 'Restarts', 'Age'],
+                        rows=all_pods
+                    )
+                    Console.newLine()
 
-        # Lanzar el error de no existencia de implementaciones
-        Console.newLine()
-        Console.info(f"No registran Pods en: {self.namespace_selected}//app:{self.deployment_selected}")
-        Console.newLine()
+                # Store the pod data
+                self.pods = all_pods
+                return
+
+            # Handle case where no pods are found
+            Console.fail(f"No pods registered in namespace [{self.namespace_selected}] for deployment [{self.deployment_selected}].")
+
+        except subprocess.CalledProcessError as e:
+            error_message = f"Failed to retrieve pods for namespace [{self.namespace_selected}] and deployment [{self.deployment_selected}]. Error: {e.stderr.strip()}"
+            raise RuntimeError(error_message) from e
 
     def selectPod(self, pod:str=None):
-        """Solicitarle al usuario la seleccion de un pod en caso de no haber uno configurado."""
+        """
+        Prompt the user to select a pod if none is already selected.
 
-        # Generar el listado de los deployments.
-        list_pods = []
-        for i_value in self.pods:
-            list_pods.append(i_value[0])
+        This method allows the user to select a pod from the list of available pods.
+        If a pod is already selected or provided, it skips the prompt. If a pod is not
+        available in the list, it raises an error.
 
-        # Si no existe un namespace por defecto solicitarle al usuario cual emplear.
+        Args:
+            pod (str, optional): The name of the pod to select. If None, the user is prompted to choose.
+
+        Raises:
+            ValueError: If the provided pod name is not in the list of available pods.
+
+        Returns:
+            None
+        """
+        # Generate the list of available pods
+        if not self.pods:
+            self.listPods(echo=False)
+        list_pods = [i_value[0] for i_value in self.pods]
+
+        # If no pod is selected, prompt the user to choose one
         if pod is None:
-
-            # Solicitar la seleccion.
             pod = Console.choice(
-                question="¿Que POD deseas acceder?",
+                question="Which POD would you like to access?",
                 choices=list_pods
             )
 
-        # Garantizar que la implementacion este presente.
+        # Ensure the selected pod is available in the list
         if pod not in list_pods:
-            raise ValueError(f"No existe el POD con el nombre [{pod}] dentro de las opciones disponibles.")
+            raise ValueError(f"The POD [{pod}] does not exist in the available options.")
 
-        # Alojar el valor del namespace a emplear.
+        # Store the selected pod for later use
         self.pod_selected = pod
 
-        # Mostrar el nombre del nombre de espacio seleccionado
+        # Display the selected pod name in the console
         Console.info(
-            message=f"POD seleccionado: [{self.pod_selected}]",
+            message=f"Selected POD: [{self.pod_selected}]",
             timestamp=True
         )
 
-    def runBackup(self, folder: str = None):
+    def clear_folder(self, folder_path):
+        """Clears the contents of the specified folder."""
+        for file in folder_path.iterdir():
+            if file.is_dir():
+                shutil.rmtree(file)
+            else:
+                file.unlink()
+
+    def runBackup(self, folder: str = None, origin: str = '/var/www/app'):
         """
-        Este método se encarga de crear un backup de forma local del código fuente.
+        This method performs a backup of the source code from the specified pod in the selected namespace.
+
+        Args:
+            folder (str, optional): The directory where the backup will be stored. If not specified, the default backup path is used.
+
+        Raises:
+            ValueError: If the pod or namespace is not properly selected or if the backup fails.
+            subprocess.CalledProcessError: If the backup command fails during execution.
         """
-        # Definir ruta de backup si no se especifica una
+
+        # Set the backup path
         if not folder:
-            current_path = os.path.dirname(__file__)
-            backup_path = os.path.join(
-                current_path, '..', 'backups', sanitize_folder_name(self.pod_selected)
-            )
+            current_path = Path(__file__).resolve().parent
+            backup_path = current_path.parent / 'backups' / sanitize_folder_name(self.pod_selected)
         else:
-            backup_path = folder
+            backup_path = Path(folder).resolve()
 
-        # De no existir el folder crearlo.
-        os.makedirs(backup_path, exist_ok=True)
+        # Ensure the backup directory exists or create it
+        backup_path.mkdir(parents=True, exist_ok=True)
 
-        # Si la carpeta no está vacía, limpiar su contenido
-        if os.listdir(backup_path):
-            clear_folder(backup_path)
+        # Clear the folder if it contains any files
+        if any(backup_path.iterdir()):
+            self.clear_folder(backup_path)
 
-        # Obtener la ruta absoluta
-        backup_path = os.path.abspath(backup_path).replace("\\", "/")
+        # Get the absolute path for backup
+        backup_path = backup_path.as_posix()
 
-        # Guardar el directorio actual
-        original_dir = os.getcwd()
+        # Save the current working directory
+        original_dir = Path.cwd()
 
-        # Iniciaremos la copia de seguridad
-        os.chdir(backup_path)
+        # Prepare the kubectl command to copy files from the pod
         kubectl_cmd = [
             "kubectl", "cp",
-            f"{self.namespace_selected}/{self.pod_selected}:/var/www/app",
-            "./"
+            f"{self.namespace_selected}/{self.pod_selected}:{origin}",
+            str(backup_path)
         ]
 
-        # Ejecutar Accion.
         try:
+
             Console.info(
-                message=f"Ejecutando copia de seguridad desde el pod '{self.pod_selected}'...",
+                message=f"Starting backup from pod '{self.pod_selected}'...",
                 timestamp=True
             )
             result = subprocess.run(kubectl_cmd, capture_output=True, text=True, check=True)
             Console.info(
-                message=f"Copia de seguridad completada: {result.stdout}",
+                message=f"Backup completed successfully: {result.stdout}",
                 timestamp=True
             )
+
         except subprocess.CalledProcessError as e:
-            Console.fail(
-                message=f"Error al realizar la copia de seguridad: {e.stderr}",
-                timestamp=True
-            )
-            raise
+            raise ValueError(f"Backup failed for pod '{self.pod_selected}'. Please check the error above.") from e
+
         finally:
-            # Volver al directorio original
             os.chdir(original_dir)
 
-    def start_bash(self):
+    def startBash(self):
+        """
+        Starts an interactive bash session inside the selected pod in the specified namespace.
+
+        This method uses `kubectl exec` to initiate a shell session within the pod and provides user-friendly feedback.
+        If the session is interrupted, it handles the `KeyboardInterrupt` gracefully.
+        """
         try:
-            # Construimos el comando completo
-            cmd = ["kubectl", "exec", "-it", self.pod_selected, "-n", self.namespace_selected, "--", "/bin/bash"]
-            Console.textWarning("Iniciando Sesión...")
-            Console.textSuccess("Sesion Iniciada Exitosamente.")
-            # Ejecutamos el comando en el shell del sistema operativo
-            subprocess.run(cmd, shell=True)
+            # Construct the kubectl command for the interactive bash session
+            cmd = [
+                "kubectl", "exec", "-it", self.pod_selected, "-n", self.namespace_selected, "--", "/bin/bash"
+            ]
+
+            Console.textWarning("Initiating session...")
+
+            # Start the bash session
+            subprocess.run(cmd, check=True, text=True)
+
+            Console.textSuccess("Session started successfully.")
+
         except KeyboardInterrupt:
-            Console.info(message="\nSaliendo de la sesión interactiva...", timestamp=True)
+            # Graceful exit if the user interrupts the session
+            Console.info(message="\nExiting interactive session...", timestamp=True)
+
+        except subprocess.CalledProcessError as e:
+            # Specific error handling for subprocess-related issues
+            raise ValueError(f"Command execution failed: {e}")
+
         except Exception as e:
-            Console.fail(message=f"Error al ejecutar el comando: {e}", timestamp=True)
+            # General error handler for any other issues
+            raise ValueError(f"An unexpected error occurred: {e}")

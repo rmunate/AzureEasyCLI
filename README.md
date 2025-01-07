@@ -1,183 +1,142 @@
-# **Manual de Conexión a Azure y Kubernetes**
+# Azure CLI
 
-Este manual ofrece instrucciones detalladas para conectar con Azure, configurar una suscripción, interactuar con un clúster de Kubernetes y gestionar los Pods y Deployments dentro del entorno.
+Azure Easy CLI - Simplifying Azure Management
 
----
+This project allows you to interact with Azure Kubernetes Service (AKS) to manage namespaces, deployments, pods, and perform backup operations through a simple and user-friendly command-line interface (CLI). You can perform actions such as:
 
-## **1. Iniciar sesión en Azure**
+- Listing namespaces.
+- Selecting namespaces, deployments, and pods.
+- Performing backups of source code from pods.
+- Starting an interactive session (console) in a pod.
 
-Para iniciar sesión en Azure, ejecute el siguiente comando:
+## Prerequisites
 
-```bash
-# En la Web
-az login
+Before you begin, make sure the following requirements are met:
 
-# En el Local
-az login --tenant <ID_TENANT>
+1. **Python 3.11+**
+2. **Azure CLI** installed and authenticated (https://learn.microsoft.com/en-us/cli/azure/install-azure-cli).
+3. **kubectl** installed and configured to access your AKS cluster (https://kubernetes.io/docs/tasks/tools/).
+4. **config.json** with your Azure and Kubernetes details (provided below).
+
+## Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/rmunate/AzureEasyCLI.git
+   ```
+
+2. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   ```
+
+3. Activate your environment:
+   ```bash
+   venv/scripts/activate  # Windows
+   source venv/bin/activate  # Linux/MacOS
+   ```
+
+4. Install the required dependencies (Not required, currently has no dependencies.):
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+Note: Make sure that `kubectl` and `az` are authenticated and configured to access your Kubernetes cluster.
+
+## Configuration
+
+The script relies on a `config.json` file located in the root directory of the project. The structure of the `config.json` file is as follows:
+
+```json
+{
+    "tenant" : "your-tenant-id",
+    "subscription_id" : "your-subscription-id",
+    "credentials" : {
+        "resource-group" : "your-resource-group-name",
+        "name" : "your-cluster-name",
+        "overwrite-existing" : true
+    },
+    "namespace" : {
+        "echo": false,
+        "select" : "your-namespace-name"
+    },
+    "deployments" : {
+        "echo": false,
+        "select" : "your-deployment-name"
+    },
+    "pods" : {
+        "echo": false,
+        "select" : "your-pod-name"
+    },
+    "backup" : {
+        "folder" : "path/to/backup/folder",
+        "origin" : "/var/www/app"
+    }
+}
 ```
 
-Asegúrese de utilizar las credenciales adecuadas para su cuenta de Azure.
+### Key Configuration Fields
 
----
+- **tenant**: Your Azure tenant ID.
+- **subscription_id**: Your Azure subscription ID.
+- **credentials**: Contains the Azure credentials needed to interact with your AKS cluster:
+  - **resource-group**: The Azure resource group where your AKS cluster is located.
+  - **name**: The name of your AKS cluster.
+  - **overwrite-existing**: If `true`, it will overwrite existing resources.
+- **namespace**: Specifies the namespace to interact with.
+  - **echo**: Set to `false` if you don't want to display namespaces in the console.
+  - **select**: The default namespace to select.
+- **deployments**: Specifies the deployment to interact with.
+  - **echo**: Set to `false` if you don't want to display deployments in the console.
+  - **select**: The default deployment to select.
+- **pods**: Specifies the pod to interact with.
+  - **echo**: Set to `false` if you don't want to display pods in the console.
+  - **select**: The default pod to select.
+- **backup**: Configuration for backup operations.
+  - **folder**: The local folder where backups will be stored.
+  - **origin**: The folder inside the pod to back up (defaults to `/var/www/app`).
 
-## **2. Configurar la suscripción**
+## Usage
 
-Para trabajar con una suscripción específica, utilice el siguiente comando:
+### Run a Backup
 
-```bash
-az account set --subscription <ID_SUSCRIPCION>
-```
-
----
-
-## **3. Obtener las credenciales del clúster Kubernetes**
-
-Conéctese al clúster Kubernetes configurando las credenciales para el grupo de recursos y el nombre del clúster deseado:
-
-```bash
-az aks get-credentials --resource-group <GRUPO_RECURSOS> --name <CLUSTER_NAME> --overwrite-existing
-```
-
----
-
-## **4. Listar los Pods disponibles**
-
-Para ver todos los Pods disponibles en el clúster, ejecute el siguiente comando:
-
-```bash
-kubectl get pods --all-namespaces -o wide
-```
-
----
-
-## **5. Listar todos los Deployments**
-
-### Listar todos los Deployments en el clúster
-```bash
-kubectl get deployments --all-namespaces
-```
-
-### Listar Deployments en un espacio de nombres específico
-Para filtrar por espacio de nombres, use el siguiente comando:
+To create a backup of the source code from the selected pod:
 
 ```bash
-kubectl get deployments -n <NAMESPACE>
+python main.py --backup
 ```
 
----
+This will execute the backup to the folder specified in the `config.json` file.
 
-## **6. Identificar los espacios de nombres**
+### Start an Interactive Bash Session
 
-Si no conoce los espacios de nombres disponibles, liste todos con el siguiente comando:
+To start an interactive console session in the selected pod:
 
 ```bash
-kubectl get namespaces
+python main.py --console
 ```
 
----
+This will open a Bash shell inside the selected pod, allowing you to interact with it directly.
 
-## **7. Acceder a un Pod específico**
+### Script Flow
 
-Para acceder a un Pod y trabajar en su entorno de CLI, ejecute el siguiente comando, reemplazando `<POD_NAME>` con el nombre del Pod deseado:
+1. The script will load the configuration from the `config.json` file.
+2. It will authenticate with Azure and set the subscription and resource group.
+3. It will list the namespaces, deployments, and pods, and prompt you to select which ones to use (if not specified in the configuration).
+4. The backup will execute if the `--backup` argument is provided.
+5. An interactive Bash session will start in the selected pod if the `--console` argument is provided.
+
+### Example
 
 ```bash
-kubectl exec -it <POD_NAME> -n <NAMESPACE> -- /bin/bash
+python main.py --backup  # Perform the backup of the selected pod to the configured local folder
+python main.py --console  # Start an interactive session in the selected pod
 ```
 
----
+## Error Handling
 
-## **8. Comandos útiles dentro del Pod**
+- The script will display relevant error messages if issues arise during execution, including configuration errors or network issues with Azure or Kubernetes.
 
-Una vez dentro del Pod, puede usar los siguientes comandos para navegar y gestionar archivos:
+## License
 
-### **Navegación de directorios**
-- Listar contenido del directorio actual:
-  ```bash
-  ls
-  ```
-- Listar contenido con detalles:
-  ```bash
-  ls -l
-  ```
-- Cambiar a otro directorio:
-  ```bash
-  cd <directorio>
-  ```
-- Volver al directorio anterior:
-  ```bash
-  cd ..
-  ```
-
-### **Gestión de archivos**
-- Copiar un archivo:
-  ```bash
-  cp <archivo_origen> <archivo_destino>
-  ```
-- Mover o renombrar un archivo:
-  ```bash
-  mv <archivo_origen> <archivo_destino>
-  ```
-- Eliminar un archivo:
-  ```bash
-  rm <nombre_archivo>
-  ```
-
-### **Edición de archivos**
-- Abrir un archivo con el editor de texto:
-  ```bash
-  nano <nombre_archivo>
-  ```
-
-### **Gestión de procesos**
-- Ver los procesos en ejecución:
-  ```bash
-  ps aux
-  ```
-
-### **Otras utilidades**
-- Ver el contenido de un archivo:
-  ```bash
-  cat <nombre_archivo>
-  ```
-- Limpiar la pantalla de la terminal:
-  ```bash
-  clear
-  ```
-- Crear un directorio:
-  ```bash
-  mkdir <nombre_directorio>
-  ```
-- Comprobar espacio en disco:
-  ```bash
-  df -h
-  ```
-
----
-
-## **Copiar Contenido Al Local**
-
-Para copiar el contenido de un Pod a una ruta del equipo local, inicie sesión desde PowerShell, asegurándose de que el Azure CLI esté instalado previamente.
-
-Ruta a copiar = `/var/www/app`
-Pod = `<POD_NAME>`
-Namespace = `<NAMESPACE>`
-
-```bash
-# Primero navegue hasta la ruta local donde desea copiar el contenido.
-cd <ruta_local>
-
-# Luego ejecute el comando de copia.
-kubectl cp <NAMESPACE>/<POD_NAME>:/var/www/app ./<POD_NAME>/
-```
-
----
-
-## **Copiar Archivos Local Al POD**
-
-Para copiar un archivo del equipo local al Pod, ejecute el siguiente comando:
-
-```bash
-kubectl cp <archivo_local> <NAMESPACE>/<POD_NAME>:/var/www/app/<ruta_destino>
-```
-
----
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

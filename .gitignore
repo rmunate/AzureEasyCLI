@@ -1,5 +1,13 @@
+# Byte-Compiled / Optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Folders
 backups/*
 devs
 files_check
 tmp
+
+# Local Scripts
 check.py

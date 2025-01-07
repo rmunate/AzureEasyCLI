@@ -1,3 +1,9 @@
+# ---------------------------------------------------------------------------- #
+# Author: Raul Mauricio Uñate Castro                                           #
+# GitHub: https://github.com/rmunate                                           #
+# Date: January 7, 2025                                                        #
+# ---------------------------------------------------------------------------- #
+
 from enum import Enum
 
 class ConsoleColor(Enum):

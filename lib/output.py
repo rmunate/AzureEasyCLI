@@ -1,3 +1,9 @@
+# ---------------------------------------------------------------------------- #
+# Author: Raul Mauricio Uñate Castro                                           #
+# GitHub: https://github.com/rmunate                                           #
+# Date: January 7, 2025                                                        #
+# ---------------------------------------------------------------------------- #
+
 import os
 import getpass
 from lib.helpers import strftime

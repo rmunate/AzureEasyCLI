@@ -1,11 +1,20 @@
+# ---------------------------------------------------------------------------- #
+# Author: Raul Mauricio Uñate Castro                                           #
+# GitHub: https://github.com/rmunate                                           #
+# Date: January 7, 2025                                                        #
+# ---------------------------------------------------------------------------- #
+
 import json
 import os
 
 class Config:
+    """
+    Class to manage and load configuration settings from a JSON file.
+    """
 
     def __init__(self):
         """
-        Inicializador de la clase
+        Initializes the Config object and loads the configuration from a file.
         """
         self.tenant = None
         self.credentials = None
@@ -18,53 +27,66 @@ class Config:
         self.deployments = None
         self.deployments_select = None
         self.deployments_echo = True
+        self.pods = None
+        self.pods_select = None
+        self.pods_echo = True
         self.backup = None
         self.backup_folder = None
+        self.backup_origin = None
+
+        # Load configuration settings
         self.load()
 
     def load(self) -> dict:
         """
-        Lectura del archivo de configuración.
+        Reads the configuration file and sets class attributes based on its contents.
+
+        Returns:
+            dict: A dictionary with configuration data loaded from the file.
+
+        Raises:
+            ValueError: If there is an error reading or parsing the configuration file.
         """
         try:
+            # Define the path for the configuration file
+            config_file_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
 
-            self.path_file = os.path.join(os.path.dirname(__file__), '..', 'config.json')
+            # Load the JSON content from the config file
+            with open(config_file_path, 'r') as file:
+                config_data = json.load(file)
 
-            config = {}
-            with (open(self.path_file, 'r')) as file:
-                config = json.loads(file.read())
+            # Tenant and Subscription Information
+            self.tenant = config_data.get('tenant')
+            self.subscription_id = config_data.get('subscription_id')
 
-            # Nombre del Tenant
-            self.tenant = config.get('tenant')
-
-            # Subscripcion.
-            self.subscription_id = config.get('subscription_id')
-
-            # Credenciales.
-            self.credentials = config.get('credentials')
+            # Credentials
+            self.credentials = config_data.get('credentials', {})
             self.resource_group = self.credentials.get('resource-group')
             self.name = self.credentials.get('name')
             self.overwrite_existing = self.credentials.get('overwrite-existing')
 
-            # Namespace
-            self.namespaces = config.get('namespace')
+            # Namespace configuration
+            self.namespaces = config_data.get('namespace', {})
             self.namespace_select = self.namespaces.get('select')
-            self.namespace_echo = self.namespaces.get('echo')
+            self.namespace_echo = self.namespaces.get('echo', True)
 
-            # Deployments
-            self.deployments = config.get('deployments')
+            # Deployment configuration
+            self.deployments = config_data.get('deployments', {})
             self.deployments_select = self.deployments.get('select')
-            self.deployments_echo = self.deployments.get('echo')
+            self.deployments_echo = self.deployments.get('echo', True)
 
-            # Deployments
-            self.pods = config.get('pods')
+            # Pod configuration
+            self.pods = config_data.get('pods', {})
             self.pods_select = self.pods.get('select')
-            self.pods_echo = self.pods.get('echo')
+            self.pods_echo = self.pods.get('echo', True)
 
-            # Backup Folder
-            self.backup = config.get('backup')
+            # Backup configuration
+            self.backup = config_data.get('backup', {})
             self.backup_folder = self.backup.get('folder')
+            self.backup_origin = self.backup.get('origin')
+
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            raise ValueError(f"Failed to read or parse the config file: {str(e)}")
 
         except Exception as e:
-            raise ValueError(f"Fail Read Config File: {str(e)}")
-
+            raise ValueError(f"Unexpected error while loading config: {str(e)}")
