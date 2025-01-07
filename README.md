@@ -129,8 +129,8 @@ This will open a Bash shell inside the selected pod, allowing you to interact wi
 ### Example
 
 ```bash
-python main.py --backup  # Perform the backup of the selected pod to the configured local folder
-python main.py --console  # Start an interactive session in the selected pod
+python -B .\azure-cli.py --backup  # Perform the backup of the selected pod to the configured local folder
+python -B .\azure-cli.py --console  # Start an interactive session in the selected pod
 ```
 
 ## Error Handling
